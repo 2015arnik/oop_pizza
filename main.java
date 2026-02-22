@@ -1,27 +1,36 @@
-class Ingredient {
-    private String name;
-    private double price;
+abstract class Enity {
+    protected String name;
 
-    public Ingredient(String name, double price) {
+    public Enity (String name) {
         this.name = name;
-        this.price = price;
     }
 
-    public String getName() {
+    public  String getName () {
         return name;
     }
 
-    public void setName(String name) {
+    public void setName (String name) {
         this.name = name;
+    }
+}
+
+class Ingredient extends Enity {
+    private double price;
+
+    public Ingredient (String name, double price) {
+        super(name);
+        this.price = price
     }
 
     public double getPrice() {
         return price;
     }
-
-    public void setPrice(double price) {
+    
+    public void setPrice(double cost) {
         this.price = price;
     }
 
-
 }
+
+
+
