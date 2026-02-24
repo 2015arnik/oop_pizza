@@ -23,6 +23,7 @@ abstract class Entity {
 
 class Ingredient extends Entity {
     private double price;
+    private boolean doublePortion = false;
 
     public Ingredient (String name, double price) {
         super(name);
@@ -35,6 +36,14 @@ class Ingredient extends Entity {
     
     public void setPrice(double price) {
         this.price = price;
+    }
+
+    public boolean getPortinon() {
+        return doublePortion;
+    }
+
+    public void setPortion(boolean arg) {
+        this.doublePortion = arg;
     }
 
 }
@@ -93,8 +102,10 @@ class NotClassicBase extends Base {
 }
 
 
-class Side extends {
+class Side extends Entity {
     private double price;
+    private List<Pizza> banPizzas = new ArrayList<>();
+
     Side (String name, double price) {
         super(name);
         this.price = price;
@@ -107,22 +118,36 @@ class Side extends {
     public void setPrice (double price) {
         this.price = price;
     }
+
+    public List<Pizza> getBanPizzas() {
+        return banPizzas;
+    }
+
+    public void addBanPizza(Pizza pizza) {
+        banPizzas.add(pizza);
+    }
+    
+    public void removeBanPizza(Pizza pizza) {
+        banPizzas.removeIf(piz -> piz.getId().equals(pizza.getId()));
+    }
 }
 
 
-public enum Size {
-    SMALL(20, 6, 0.8),
-    MEDIUM(30, 8, 1.0),
-    LARGE(40, 12, 1.2);
+enum Size {
+    SMALL(20, 6, 0.8, "Маленькая"),
+    MEDIUM(30, 8, 1.0, "Средняя"),
+    LARGE(40, 12, 1.2, "Большая");
 
     private final int diameter;
     private final int amount;
     private final double k;
+    private final String name;
 
-    Size(int diameter, int amount, double k) {
+    Size(int diameter, int amount, double k, String name) {
         this.diameter = diameter;
         this.amount = amount;
         this.k = k;
+        this.name=name;
     }
 
     public int getDiameter() {
@@ -137,6 +162,10 @@ public enum Size {
         return k;
     }
 
+    public String getName() {
+        return name;
+    }
+
 }
 
 
@@ -144,10 +173,12 @@ abstract class Slice extends Entity {
     protected List<Ingredient> ingredients = new ArrayList<>();
     protected Size size;
     protected double price;
+    protected Side side;
 
-    Slice (String name, Size size) {
+    Slice (String name, Size size, Side side) {
         super(name);
         this.size = size;
+        this.side = side;
     }
 
     public void addIngredient (Ingredient ingredient) {
@@ -159,37 +190,173 @@ abstract class Slice extends Entity {
         ingredients.remove(ingredient);
     }
 
+    public void setSide(Side side, UUID id){
+        if (!side.getBanPizzas().stream().anyMatch(p -> p.getId().equals(id))) this.side=side;
+        else throw new IllegalArgumentException("Нельзя добавить такой борт к этой пицце");
+    }
+
 }
 
 
 
-public enum Mode {
-    BASIC,
-    HALFS,
-    PARTS;
+enum Mode {
+    BASIC("Целиком"),
+    HALFS("Половинки"),
+    PARTS("Кусочки");
+
+    private final String name;
+
+    Mode(String name) {
+        this.name = name;
+    }
+
+    public String getName() {
+        return name;
+    }
+}
+
+class Person extends Entity {
+    double bill = 0;
+    Person (String name) {
+        super(name);
+    }
 }
 
 class Pizza extends Slice {
-    private List<Slice> slices = new ArrayList<>();
+    private List<Slice> slices;
     private Base base;
-    private double price = 0;
     private Mode mode;
-    
 
-
-    Pizza (String name, Base base, Size size, Mode mode) {
-        super(name, size);
-        if (name == null) throw new IllegalArgumentException ("У пиццы должна быть основа");
+    Pizza (String name, Base base, Size size, Mode mode, Side side) {
+        super(name, size, side);
+        if (base == null) throw new IllegalArgumentException ("У пиццы должна быть основа");
         else {
             this.base = base;
             this.mode = mode;
-            price += base.price * size.getK;
+            this.slices = new ArrayList<>(size.getAmount());
+        }
+    }
+    
+    public Base getBase() {
+        return base;
+    }
+
+    public double getPrice() {
+        double price = 0;
+        price += base.getPrice(); //стоимость основы
+        for (Slice slice : slices){
+            for (Ingredient ingredient : slice.ingredients) {
+                int t = 1;
+                if (ingredient.getPortinon()) t = 2; // двойная порция
+                price+=ingredient.getPrice() * t; // стоимость ингредиента
+            }
+            price+=side.getPrice(); // стоимость бортиков
+        }
+
+        return price;
+    }
+
+    public Mode getMode() {
+        return mode;
+    }
+
+    public List<Slice> getSlices() {
+        return slices;
+    }
+
+    public void setBase(Base base) {
+        this.base = base;
+    }
+
+    public void setMode(Mode mode) {
+        this.mode = mode;
+    }
+
+    public void setPrice(double price) {
+        this.price = price;
+    }
+
+    public void setSlices(List<Slice> slices) {
+        this.slices = slices;
+    }
+
+    public void setSize(Size size) {
+        this.size = size;
+        List<Slice> copy = new ArrayList<>(slices);
+        if (mode == Mode.PARTS) {
+            slices = new ArrayList<>(size.getAmount());
+        }
+        else {
+            for (int i = 1; i < slices.size()/2; i++) {
+                slices.set(i, copy.get(0));
+            }
+            for (int i = slices.size()/2; i < slices.size()-1; i++) {
+                slices.set(i, copy.get(copy.size()-1));
+            }
+        }
+    }
+
+    public void addIngredientsBasic(Ingredient ingr) {
+        for (Slice slice : slices) {
+            slice.addIngredient(ingr);
+        }
+    }
+
+    public void addIngredientHalfs(Pizza pizzaA, Pizza pizzaB) {
+        for (int i=0; i<slices.size()/2; i++) {
+            slices.set(i, pizzaA.getSlices().get(0));
+        }
+
+        for (int i=slices.size()/2; i<slices.size(); i++) {
+            slices.set(i, pizzaB.getSlices().get(0));
+        }
+    
+    }
+
+    public void addIngredientParts(Ingredient ingr, int a, int b) {
+        for (int i = a-1; i<b; i++) {
+             slices.get(i).addIngredient(ingr);
+        }
+    }
+
+    public void addSideBasic(Side side) {
+        try {
+            for (Slice slice:slices){
+                slice.setSide(side, id);
+            }
+        }
+        catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Нельзя добавить такой борт к этой пицце");
+        }
+    }
+
+    public void addSideHalfs(Side side, String half) {
+        try {
+            if (half == "A"){
+                for (int i=0; i<slices.size()/2; i++) {
+                    slices.get(i).setSide(side, id);
+                }
+            }
+            else {
+                for (int i=slices.size()/2; i<slices.size(); i++) {
+                    slices.get(i).setSide(side, id);
+                }
+            }
+        }
+        catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Нельзя добавить такой борт к этой пицце");
         }
     }
 
     
+}
 
 
+class Order extends Entity {
+    
+    Order(String name) {
+        super(name);
+    }
 
 }
 
