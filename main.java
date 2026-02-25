@@ -1,4 +1,5 @@
 import java.util.*;
+import java.time.*;
 
 abstract class Entity {
     protected String name;
@@ -215,13 +216,6 @@ enum Mode {
     }
 }
 
-class Person extends Entity {
-    double bill = 0;
-    Person (String name) {
-        super(name);
-    }
-}
-
 class Pizza extends Slice {
     private List<Slice> slices;
     private Base base;
@@ -352,12 +346,92 @@ class Pizza extends Slice {
 }
 
 
-class Order extends Entity {
-    
-    Order(String name) {
+class Person extends Entity {
+    double bill = 0;
+    public Person (String name) {
         super(name);
     }
+}
 
+
+
+class Order extends Entity {
+
+    private Map<UUID, List<Person>> pizzas = new HashMap<>();
+    private List<Person> guests = new ArrayList<>();
+    private List<Pizza> newPizzas = new ArrayList<>();
+    private String comment;
+    private Instant time;
+
+    public Order(String name) {
+        super(name);
+        this.time = Instant.now();
+    }
+
+    public List<Person> getGuests() {
+        return guests;
+    }
+
+    public Map<UUID, List<Person>> getPizzas() {
+        return pizzas;
+    }
+
+    public void removeGuest(Person guest) {
+        guests.removeIf(g -> g.getId().equals(guest.getId()));
+        for (List<Person> persons : pizzas.values()) {
+            persons.removeIf(person -> guest.getId().equals(person.getId()));
+        }
+    
+    }
+
+    public void createGuest(Person guest) {
+        guests.add(guest);
+    }
+
+    public void removeGuestFromPizza (Pizza pizza, Person guest) {
+        pizzas.get(pizza.getId()).removeIf(g -> g.getId().equals(guest.getId()));
+    }
+
+    public void addGuestToPizza(Pizza pizza, Person guest) {
+        pizzas.get(pizza.getId()).add(guest);
+
+    }
+
+    public void addPizza(Pizza pizza) {
+        pizzas.put(pizza.getId(), new ArrayList<Person>());
+    }
+
+    public void removePizza(Pizza pizza) {
+        pizzas.remove(pizza.getId());
+    }
+
+    public void createNewPizza(Pizza pizza) {
+        newPizzas.add(pizza);
+    }
+
+    public List<Pizza> getNewPizzas() {
+        return newPizzas;
+    }
+
+    public String getComment() {
+        return comment;
+    }
+
+    public void setComment(String comment) {
+        this.comment = comment;
+    }
+
+    public Instant getTime() {
+        return time;
+    }
+
+    public void setTime(Instant time) {
+        if (this.time.isAfter(time)) {
+            throw new IllegalArgumentException("Нельзя сделать заказ в прошлом");
+        } else {
+            this.time = time;
+        }
+    }
 }
 
 
