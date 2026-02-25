@@ -24,7 +24,6 @@ abstract class Entity {
 
 class Ingredient extends Entity {
     private double price;
-    private boolean doublePortion = false;
 
     public Ingredient (String name, double price) {
         super(name);
@@ -39,14 +38,17 @@ class Ingredient extends Entity {
         this.price = price;
     }
 
-    public boolean getPortinon() {
-        return doublePortion;
+}
+
+record IngredientPortion(Ingredient ingredient, int multiplier) {
+    public IngredientPortion {
+        if (ingredient == null) throw new IllegalArgumentException("ingredient null");
+        if (multiplier != 1 && multiplier != 2) throw new IllegalArgumentException("multiplier must be 1 or 2");
     }
 
-    public void setPortion(boolean arg) {
-        this.doublePortion = arg;
+    public double cost() {
+        return ingredient.getPrice() * multiplier;
     }
-
 }
 
 abstract class Base extends Entity {
@@ -171,7 +173,7 @@ enum Size {
 
 
 abstract class Slice extends Entity {
-    protected List<Ingredient> ingredients = new ArrayList<>();
+    protected List<IngredientPortion> ingredients = new ArrayList<>();
     protected Size size;
     protected double price;
     protected Side side;
@@ -182,14 +184,13 @@ abstract class Slice extends Entity {
         this.side = side;
     }
 
-    public void addIngredient (Ingredient ingredient) {
-        ingredients.add(ingredient);
+    public void addIngredient(Ingredient ingredient, int mult) {
+    ingredients.add(new IngredientPortion(ingredient, mult));
+}
 
-    }
-
-    public void removeIngredient (Ingredient ingredient) {
-        ingredients.remove(ingredient);
-    }
+public void removeIngredient(UUID ingredientId) {
+    ingredients.removeIf(p -> p.ingredient().getId().equals(ingredientId));
+}
 
     public void setSide(Side side, UUID id){
         if (!side.getBanPizzas().stream().anyMatch(p -> p.getId().equals(id))) this.side=side;
@@ -221,6 +222,13 @@ class Pizza extends Slice {
     private Base base;
     private Mode mode;
 
+    private void initSlices() {
+    slices = new ArrayList<>();
+    for (int i = 0; i < size.getAmount(); i++) {
+        slices.add(new Slice(this.name + " кусок " + (i + 1), size, side) {});
+    }
+}
+
     Pizza (String name, Base base, Size size, Mode mode, Side side) {
         super(name, size, side);
         if (base == null) throw new IllegalArgumentException ("У пиццы должна быть основа");
@@ -228,6 +236,7 @@ class Pizza extends Slice {
             this.base = base;
             this.mode = mode;
             this.slices = new ArrayList<>(size.getAmount());
+            initSlices();
         }
     }
     
@@ -236,18 +245,27 @@ class Pizza extends Slice {
     }
 
     public double getPrice() {
-        double price = 0;
-        price += base.getPrice(); //стоимость основы
-        for (Slice slice : slices){
-            for (Ingredient ingredient : slice.ingredients) {
-                int t = 1;
-                if (ingredient.getPortinon()) t = 2; // двойная порция
-                price+=ingredient.getPrice() * t; // стоимость ингредиента
+        double total = 0;
+
+        // основа
+        total += base.getPrice();
+
+        // ингредиенты по кускам
+        for (Slice slice : slices) {
+            for (IngredientPortion ip : slice.ingredients) {
+                total += ip.cost();
             }
-            price+=side.getPrice(); // стоимость бортиков
         }
 
-        return price;
+        // бортики: суммируем разные бортики, встречающиеся на кусках
+        total += slices.stream()
+                .map(s -> s.side)
+                .filter(Objects::nonNull)
+                .distinct()
+                .mapToDouble(Side::getPrice)
+                .sum();
+
+        return total;
     }
 
     public Mode getMode() {
@@ -274,6 +292,11 @@ class Pizza extends Slice {
         this.slices = slices;
     }
 
+    private void copyIngredientsFromSlice(Slice from, Slice to) {
+        to.ingredients.clear();
+        to.ingredients.addAll(from.ingredients);
+    }
+
     public void setSize(Size size) {
         this.size = size;
         List<Slice> copy = new ArrayList<>(slices);
@@ -290,28 +313,28 @@ class Pizza extends Slice {
         }
     }
 
-    public void addIngredientsBasic(Ingredient ingr) {
+    public void addIngredientsBasic(Ingredient ingr, int mult) {
         for (Slice slice : slices) {
-            slice.addIngredient(ingr);
+            slice.addIngredient(ingr, mult);
         }
+}
+
+    public void applyHalfsFrom(Pizza pizzaA, Pizza pizzaB) {
+        int mid = slices.size() / 2;
+
+        Slice a0 = pizzaA.getSlices().get(0);
+        Slice b0 = pizzaB.getSlices().get(0);
+
+        for (int i = 0; i < mid; i++) copyIngredientsFromSlice(a0, slices.get(i));
+        for (int i = mid; i < slices.size(); i++) copyIngredientsFromSlice(b0, slices.get(i));
     }
 
-    public void addIngredientHalfs(Pizza pizzaA, Pizza pizzaB) {
-        for (int i=0; i<slices.size()/2; i++) {
-            slices.set(i, pizzaA.getSlices().get(0));
+    public void addIngredientParts(Ingredient ingr, int mult, int a, int b) {
+        if (a < 1 || b > slices.size() || a > b) throw new IllegalArgumentException("Неверный диапазон кусков");
+        for (int i = a - 1; i <= b - 1; i++) {
+            slices.get(i).addIngredient(ingr, mult);
         }
-
-        for (int i=slices.size()/2; i<slices.size(); i++) {
-            slices.set(i, pizzaB.getSlices().get(0));
-        }
-    
-    }
-
-    public void addIngredientParts(Ingredient ingr, int a, int b) {
-        for (int i = a-1; i<b; i++) {
-             slices.get(i).addIngredient(ingr);
-        }
-    }
+}
 
     public void addSideBasic(Side side) {
         try {
@@ -326,7 +349,7 @@ class Pizza extends Slice {
 
     public void addSideHalfs(Side side, String half) {
         try {
-            if (half == "A"){
+            if (half.equals("A")){
                 for (int i=0; i<slices.size()/2; i++) {
                     slices.get(i).setSide(side, id);
                 }
@@ -340,6 +363,11 @@ class Pizza extends Slice {
         catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Нельзя добавить такой борт к этой пицце");
         }
+    }
+
+    public void addSideParts(Side side, int a, int b) {
+        if (a < 1 || b > slices.size() || a > b) throw new IllegalArgumentException("Неверный диапазон");
+        for (int i = a - 1; i <= b - 1; i++) slices.get(i).setSide(side, id);
     }
 
     
