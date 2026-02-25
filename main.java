@@ -175,7 +175,6 @@ enum Size {
 abstract class Slice extends Entity {
     protected List<IngredientPortion> ingredients = new ArrayList<>();
     protected Size size;
-    protected double price;
     protected Side side;
 
     Slice (String name, Size size, Side side) {
@@ -284,10 +283,6 @@ class Pizza extends Slice {
         this.mode = mode;
     }
 
-    public void setPrice(double price) {
-        this.price = price;
-    }
-
     public void setSlices(List<Slice> slices) {
         this.slices = slices;
     }
@@ -299,18 +294,7 @@ class Pizza extends Slice {
 
     public void setSize(Size size) {
         this.size = size;
-        List<Slice> copy = new ArrayList<>(slices);
-        if (mode == Mode.PARTS) {
-            slices = new ArrayList<>(size.getAmount());
-        }
-        else {
-            for (int i = 1; i < slices.size()/2; i++) {
-                slices.set(i, copy.get(0));
-            }
-            for (int i = slices.size()/2; i < slices.size()-1; i++) {
-                slices.set(i, copy.get(copy.size()-1));
-            }
-        }
+        initSlices();
     }
 
     public void addIngredientsBasic(Ingredient ingr, int mult) {
@@ -385,7 +369,8 @@ class Person extends Entity {
 
 class Order extends Entity {
 
-    private Map<UUID, List<Person>> pizzas = new HashMap<>();
+    private List<Pizza> pizzasList = new ArrayList<>();
+    private Map<UUID, List<Person>> pizzaGuests = new HashMap<>();
     private List<Person> guests = new ArrayList<>();
     private List<Pizza> newPizzas = new ArrayList<>();
     private String comment;
@@ -400,13 +385,17 @@ class Order extends Entity {
         return guests;
     }
 
-    public Map<UUID, List<Person>> getPizzas() {
-        return pizzas;
+    public List<Pizza> getPizzasList() {
+        return pizzasList;
+    }
+
+    public Map<UUID, List<Person>> getPizzaGuests() {
+        return pizzaGuests;
     }
 
     public void removeGuest(Person guest) {
         guests.removeIf(g -> g.getId().equals(guest.getId()));
-        for (List<Person> persons : pizzas.values()) {
+        for (List<Person> persons : pizzaGuests.values()) {
             persons.removeIf(person -> guest.getId().equals(person.getId()));
         }
     
@@ -416,21 +405,22 @@ class Order extends Entity {
         guests.add(guest);
     }
 
-    public void removeGuestFromPizza (Pizza pizza, Person guest) {
-        pizzas.get(pizza.getId()).removeIf(g -> g.getId().equals(guest.getId()));
+    public void addGuestToPizza(Pizza pizza, Person guest) {
+        pizzaGuests.get(pizza.getId()).add(guest);
     }
 
-    public void addGuestToPizza(Pizza pizza, Person guest) {
-        pizzas.get(pizza.getId()).add(guest);
-
+    public void removeGuestFromPizza(Pizza pizza, Person guest) {
+        pizzaGuests.get(pizza.getId()).removeIf(g -> g.getId().equals(guest.getId()));
     }
 
     public void addPizza(Pizza pizza) {
-        pizzas.put(pizza.getId(), new ArrayList<Person>());
+        pizzasList.add(pizza);
+        pizzaGuests.put(pizza.getId(), new ArrayList<>());
     }
 
     public void removePizza(Pizza pizza) {
-        pizzas.remove(pizza.getId());
+        pizzasList.removeIf(p -> p.getId().equals(pizza.getId()));
+        pizzaGuests.remove(pizza.getId());
     }
 
     public void createNewPizza(Pizza pizza) {
@@ -460,6 +450,14 @@ class Order extends Entity {
             this.time = time;
         }
     }
+
+    public double getTotalPrice() {
+        double total = 0;
+        for (Pizza p : pizzasList) total += p.getPrice();
+        return total;
+    }
+
+    
 }
 
 
