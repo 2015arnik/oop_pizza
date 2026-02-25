@@ -106,33 +106,38 @@ class NotClassicBase extends Base {
 
 
 class Side extends Entity {
-    private double price;
-    private List<Pizza> banPizzas = new ArrayList<>();
+    private final List<IngredientPortion> ingredients = new ArrayList<>();
+    private final List<UUID> banPizzaIds = new ArrayList<>();
 
-    Side (String name, double price) {
+    Side(String name) {
         super(name);
-        this.price = price;
     }
 
-    public double getPrice () {
-        return price;
-    } 
-
-    public void setPrice (double price) {
-        this.price = price;
+    public void addIngredient(Ingredient ingredient, int mult) {
+        ingredients.add(new IngredientPortion(ingredient, mult));
     }
 
-    public List<Pizza> getBanPizzas() {
-        return banPizzas;
+    public void removeIngredient(UUID ingredientId) {
+        ingredients.removeIf(p -> p.ingredient().getId().equals(ingredientId));
     }
 
-    public void addBanPizza(Pizza pizza) {
-        banPizzas.add(pizza);
+    public List<IngredientPortion> getIngredients() {
+        return ingredients;
     }
-    
+
+    public double getPrice() {
+        double total = 0;
+        for (IngredientPortion ip : ingredients) total += ip.cost();
+        return total;
+    }
+
+    public void addBanPizza(Pizza pizza) { banPizzaIds.add(pizza.getId()); }
+
     public void removeBanPizza(Pizza pizza) {
-        banPizzas.removeIf(piz -> piz.getId().equals(pizza.getId()));
+        banPizzaIds.removeIf(id -> id.equals(pizza.getId()));
     }
+
+    public List<UUID> getBanPizzaIds() { return banPizzaIds; }
 }
 
 
@@ -187,12 +192,12 @@ abstract class Slice extends Entity {
     ingredients.add(new IngredientPortion(ingredient, mult));
 }
 
-public void removeIngredient(UUID ingredientId) {
-    ingredients.removeIf(p -> p.ingredient().getId().equals(ingredientId));
-}
+    public void removeIngredient(UUID ingredientId) {
+        ingredients.removeIf(p -> p.ingredient().getId().equals(ingredientId));
+    }
 
     public void setSide(Side side, UUID id){
-        if (!side.getBanPizzas().stream().anyMatch(p -> p.getId().equals(id))) this.side=side;
+        if (!side.getBanPizzaIds().stream().anyMatch(bannedId -> bannedId.equals(id))) this.side = side;
         else throw new IllegalArgumentException("Нельзя добавить такой борт к этой пицце");
     }
 
@@ -321,32 +326,22 @@ class Pizza extends Slice {
 }
 
     public void addSideBasic(Side side) {
-        try {
-            for (Slice slice:slices){
-                slice.setSide(side, id);
-            }
-        }
-        catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Нельзя добавить такой борт к этой пицце");
-        }
+        for (Slice slice : slices) slice.setSide(side, id);
     }
 
     public void addSideHalfs(Side side, String half) {
-        try {
-            if (half.equals("A")){
-                for (int i=0; i<slices.size()/2; i++) {
-                    slices.get(i).setSide(side, id);
-                }
-            }
-            else {
-                for (int i=slices.size()/2; i<slices.size(); i++) {
-                    slices.get(i).setSide(side, id);
-                }
+        
+        if (half.equals("A")){
+            for (int i=0; i<slices.size()/2; i++) {
+                slices.get(i).setSide(side, id);
             }
         }
-        catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Нельзя добавить такой борт к этой пицце");
-        }
+        else {
+            for (int i=slices.size()/2; i<slices.size(); i++) {
+                slices.get(i).setSide(side, id);
+            }
+        }    
+
     }
 
     public void addSideParts(Side side, int a, int b) {
@@ -359,7 +354,6 @@ class Pizza extends Slice {
 
 
 class Person extends Entity {
-    double bill = 0;
     public Person (String name) {
         super(name);
     }
@@ -457,7 +451,68 @@ class Order extends Entity {
         return total;
     }
 
-    
+    public Map<UUID, Double> splitBills() {
+        Map<UUID, Double> bills = new HashMap<>();
+        for (Person g : guests) bills.put(g.getId(), 0.0);
+
+        for (Pizza pizza : pizzasList) {
+            List<Person> eaters = pizzaGuests.getOrDefault(pizza.getId(), List.of());
+            if (eaters.isEmpty()) continue;
+
+            double price = pizza.getPrice();
+            int n = eaters.size();
+
+            double shareRaw = price / n;
+
+            double share = Math.floor(shareRaw * 100.0) / 100.0;
+            double sum = share * n;
+
+            double diff = Math.round((price - sum) * 100.0) / 100.0;
+
+            for (Person e : eaters) {
+                bills.put(e.getId(), bills.get(e.getId()) + share);
+            }
+
+            if (diff > 0) {
+                Person first = eaters.get(0);
+                bills.put(first.getId(), bills.get(first.getId()) + diff);
+            }
+        }
+
+        return bills;
+    }
+        
 }
 
 
+
+
+
+
+
+
+
+
+
+
+class Repository<T extends Entity> {
+    private final Map<UUID, T> data = new HashMap<>();
+
+    public void add(T obj) { data.put(obj.getId(), obj); }
+    public T get(UUID id) { return data.get(id); }
+    public void remove(UUID id) { data.remove(id); }
+
+    public List<T> all() { return new ArrayList<>(data.values()); }
+
+    public List<T> filter(java.util.function.Predicate<T> predicate) {
+        return data.values().stream().filter(predicate).toList();
+    }
+}
+
+class App {
+    Repository<Ingredient> ingredientRepo = new Repository<>();
+    Repository<Base> baseRepo = new Repository<>();
+    Repository<Side> sideRepo = new Repository<>();
+    Repository<Pizza> pizzaRepo = new Repository<>();
+    Repository<Order> orderRepo = new Repository<>();
+}
